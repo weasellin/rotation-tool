@@ -12,6 +12,7 @@ Product = collections.namedtuple('Product', 'priority, remain, weight')
 ROTATION_LEN = 5
 DEBUG = False
 
+
 def load_profile(profile):
     with open('data/profile.list') as prof_json:
         prof = json.load(prof_json)
@@ -51,7 +52,7 @@ def load_conflict(profile):
 
 
 def save_profile_rotation(profile):
-    with open('output/%s.csv' % profile['name'], 'wb') as rotation_csv:
+    with open('output/%s.csv' % profile['name'], 'w') as rotation_csv:
         writer = csv.writer(rotation_csv)
         for r in profile['rotations']:
             row = []
@@ -62,11 +63,11 @@ def save_profile_rotation(profile):
 
 
 def load_profile_rotation(profile):
-    with open('output/%s.csv' % profile['name'], 'rb') as rotation_csv:
+    with open('output/%s.csv' % profile['name'], 'r') as rotation_csv:
         profile['rotations'] = []
         reader = csv.reader(rotation_csv)
         for r in reader:
-            profile['rotations'].append(map(lambda i: r[i], range(0, 9, 2)))
+            profile['rotations'].append(list(map(lambda i: r[i], range(0, 9, 2))))
 
 
 def draw_rotation_order(profile, order):
@@ -76,8 +77,14 @@ def draw_rotation_order(profile, order):
     rotation_count = len(profile['rotations'])
     for (prod_id, prod) in profile['prod_pool'].items():
         ## nmc_d_rule
-        #if order < 2 and prod['priority'] > 5:
-        #    continue
+        if order < 1 and prod['priority'] > 6:
+            continue
+        if order < 3 and prod['priority'] > 8:
+            continue
+        # if order < 4 and prod['priority'] > 8:
+        #     continue
+        if order > 3 and prod['priority'] < 9:
+            continue
         ## nmc_d_rule
         #if order < 4 and prod['priority'] > 6:
         #    continue
@@ -85,22 +92,22 @@ def draw_rotation_order(profile, order):
         #if order < 2 and prod['priority'] > 5 and rotation_count < 80:
         #    continue
         # nmc_b_BC_rule
-        if order < 2 and prod['priority'] > 5 and rotation_count < 25:
-            continue
+        #if order < 2 and prod['priority'] > 5 and rotation_count < 25:
+        #    continue
         # nmc_b_rule
-        if order < 4 and prod['priority'] > 7:
-            continue
+        #if order < 4 and prod['priority'] > 7:
+        #    continue
         if prod['remain'] > 0 and prod['weight'] > 0.0:
             id_list.append(prod_id)
-            weight_list.append(prod['weight'] * prod['remain'] ** 3)
-    
+            weight_list.append(prod['weight'] * prod['remain'] ** 5)
+
     #pprint(profile['prod_pool'])
     weight_sum = sum(weight_list)
     if weight_sum <= 0:
         #pprint(profile['prod_pool'])
         #pprint(profile['conflict_list'])
         raise Exception('END')
-    weight_list = map(lambda w: w/weight_sum, weight_list)
+    weight_list = list(map(lambda w: w/weight_sum, weight_list))
 
     id_draw = choice(id_list, p=weight_list)
     pr_draw = profile['prod_pool'][id_draw]['priority']
@@ -113,14 +120,17 @@ def draw_rotation_order(profile, order):
             for p in c:
                 profile['prod_pool'][p]['weight'] = 0.0
 
-    for (p, v) in filter(lambda (p, v): v['priority'] < pr_draw, profile['prod_pool'].items()):
-        v['weight'] = 0.0
+    for p, v in profile['prod_pool'].items():
+        if v['priority'] < pr_draw:
+            v['weight'] = 0.0
+    # for p, v in filter(lambda p, v: v['priority'] < pr_draw, profile['prod_pool'].items()):
+    #     v['weight'] = 0.0
 
     return id_draw
 
 
 def print_product(prod):
-    print '%s, %s, %s' % (prod['id'], prod['name'], prod['priority'])
+    print('%s, %s, %s' % (prod['id'], prod['name'], prod['priority']))
     return
 
 def draw_rotation(profile):
@@ -129,7 +139,7 @@ def draw_rotation(profile):
         prod['weight'] = math.exp(-0.3 * prod['priority'])
 
     if DEBUG:
-        print 'rotation %s:' % len(profile['rotations'])
+        print('rotation %s:' % len(profile['rotations']))
     for i in range(ROTATION_LEN):
         id_draw = draw_rotation_order(profile, i)
         rotation.append(id_draw)
@@ -138,18 +148,25 @@ def draw_rotation(profile):
     profile['rotations'].append(rotation)
 
 
-def draw(profile):
-    total_product_num = sum(map(lambda (k, p): p['remain'], profile['prod_pool'].items()))
-    total_rotation_num = total_product_num / ROTATION_LEN
-    print 'total_rotation_num %s' % total_rotation_num
+def draw(profile, max_rotation):
+    # print(profile['prod_pool'].items())
+    total_product_num = int(sum(p['remain'] for k, p in profile['prod_pool'].items()))
+    # total_product_num = sum(map(lambda k, p: p['remain'], profile['prod_pool'].items()))
+    total_rotation_num = int(total_product_num / ROTATION_LEN)
+    print('total_rotation_num %s' % total_rotation_num)
 
     profile['rotations'] = []
     try:
         for i in range(total_rotation_num):
             draw_rotation(profile)
+    except KeyboardInterrupt:
+        raise
     except:
-        print 'rotation %s:' % len(profile['rotations'])
-        if DEBUG:
+        print('rotation %s:' % len(profile['rotations']))
+        if i > max_rotation[-1]:
+            max_rotation.append(i)
+            pprint(profile['prod_pool'])
+        elif DEBUG:
             pprint(profile['prod_pool'])
         reset_product(profile)
         return None
@@ -159,11 +176,12 @@ def draw(profile):
 
 def generate_rotation(profile):
     trial = 2000
+    max_rotation = [100]
     if DEBUG:
         trial = 1
     for i in range(trial):
-        print 'Trial %s' % i
-        if draw(profile):
+        print('Trial %s' % i)
+        if draw(profile, max_rotation):
             save_profile_rotation(profile)
             break
 
@@ -202,9 +220,11 @@ def check_rotation(profile):
         has_np = has_np or np
         has_nc = has_nc or nc
         has_ns = has_ns or ns
+        # pprint(order)
         # print '%s, %s, %s, %s' % (nb, np, nc, ns)
-    print '%s, %s, %s, %s' % (has_nb, has_np, has_nc, has_ns)
-    pprint(order)
+    print('%s, %s, %s, %s' % (has_nb, has_np, has_nc, has_ns))
+    single_order = {p: i for p, i in order.items() if len(i) == 1}
+    pprint(single_order)
 
 
 if __name__ == '__main__':
@@ -214,7 +234,7 @@ if __name__ == '__main__':
     #prod_groups = load_profile('mac_d_B_prod_group')
     #prod_groups = load_profile('nmac_b_C_prod_group')
     #prod_groups = load_profile('mac_d_B_prod_group')
-   
+
     profile = {'name': sys.argv[1]}
     load_profile(profile)
     load_product(profile)
@@ -222,7 +242,7 @@ if __name__ == '__main__':
 
     # rotation generate
     # generate_rotation(profile)
-    
+
     # rotation check
     check_rotation(profile)
 
